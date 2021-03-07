@@ -21,6 +21,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -86,7 +88,21 @@ type STCPVisitor struct {
 }
 
 func (sv *STCPVisitor) Run() (err error) {
-	sv.l, err = net.Listen("tcp", fmt.Sprintf("%s:%d", sv.cfg.BindAddr, sv.cfg.BindPort))
+	u, err := url.Parse(sv.cfg.BindAddr)
+	if err != nil {
+		return
+	}
+	var address, network string
+	if u.Scheme == "unix" {
+		network = "unix"
+		address = u.Path
+		_ = os.Remove(u.Path)
+	} else {
+		address = fmt.Sprintf("%s:%d", sv.cfg.BindAddr, sv.cfg.BindPort)
+		network = "tcp"
+	}
+
+	sv.l, err = net.Listen(network, address)
 	if err != nil {
 		return
 	}

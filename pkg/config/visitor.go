@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"reflect"
 	"strconv"
 
@@ -143,12 +144,22 @@ func (cfg *BaseVisitorConf) UnmarshalFromIni(prefix string, name string, section
 		cfg.BindAddr = "127.0.0.1"
 	}
 
-	if tmpStr, ok = section["bind_port"]; ok {
-		if cfg.BindPort, err = strconv.Atoi(tmpStr); err != nil {
-			return fmt.Errorf("Parse conf error: proxy [%s] bind_port incorrect", name)
-		}
+	u, err := url.Parse(cfg.BindAddr)
+	if err != nil {
+		return fmt.Errorf("Parse conf error: proxy [%s] bind_addr invalid [%s]", name, err)
+	}
+	if u.Scheme == "unix" {
+		// Satisfy BaseVisitorConf BindPort check.
+		cfg.BindPort = 1
 	} else {
-		return fmt.Errorf("Parse conf error: proxy [%s] bind_port not found", name)
+
+		if tmpStr, ok = section["bind_port"]; ok {
+			if cfg.BindPort, err = strconv.Atoi(tmpStr); err != nil {
+				return fmt.Errorf("Parse conf error: proxy [%s] bind_port incorrect", name)
+			}
+		} else {
+			return fmt.Errorf("Parse conf error: proxy [%s] bind_port not found", name)
+		}
 	}
 	return nil
 }
