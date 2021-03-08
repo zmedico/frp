@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/fatedier/frp/pkg/consts"
 
@@ -81,6 +82,14 @@ type BaseVisitorConf struct {
 	ServerName     string `json:"server_name"`
 	BindAddr       string `json:"bind_addr"`
 	BindPort       int    `json:"bind_port"`
+	// Plugin specifies what plugin should be used for proxying. If this value
+	// is set, the BindAddr and BindPort values will be ignored. By default,
+	// this value is "".
+	Plugin string `json:"plugin"`
+	// PluginParams specify parameters to be passed to the plugin, if one is
+	// being used. By default, this value is an empty map.
+	PluginParams map[string]string `json:"plugin_params"`
+	BindNetwork  string            `json:"bind_network"`
 }
 
 func (cfg *BaseVisitorConf) GetBaseInfo() *BaseVisitorConf {
@@ -96,8 +105,21 @@ func (cfg *BaseVisitorConf) compare(cmp *BaseVisitorConf) bool {
 		cfg.Sk != cmp.Sk ||
 		cfg.ServerName != cmp.ServerName ||
 		cfg.BindAddr != cmp.BindAddr ||
-		cfg.BindPort != cmp.BindPort {
+		cfg.BindPort != cmp.BindPort ||
+		cfg.BindNetwork != cmp.BindNetwork ||
+		cfg.Plugin != cmp.Plugin ||
+		len(cfg.PluginParams) != len(cmp.PluginParams) {
 		return false
+	}
+	if cfg.Plugin != cmp.Plugin ||
+		len(cfg.PluginParams) != len(cmp.PluginParams) {
+		return false
+	}
+	for k, v := range cfg.PluginParams {
+		value, ok := cmp.PluginParams[k]
+		if !ok || v != value {
+			return false
+		}
 	}
 	return true
 }
@@ -107,13 +129,15 @@ func (cfg *BaseVisitorConf) check() (err error) {
 		err = fmt.Errorf("invalid role")
 		return
 	}
-	if cfg.BindAddr == "" {
-		err = fmt.Errorf("bind_addr shouldn't be empty")
-		return
-	}
-	if cfg.BindPort <= 0 {
-		err = fmt.Errorf("bind_port is required")
-		return
+	if cfg.Plugin == "" {
+		if cfg.BindAddr == "" {
+			err = fmt.Errorf("bind_addr shouldn't be empty")
+			return
+		}
+		if cfg.BindNetwork != "unix" && cfg.BindPort <= 0 {
+			err = fmt.Errorf("bind_port is required")
+			return
+		}
 	}
 	return
 }
@@ -139,16 +163,30 @@ func (cfg *BaseVisitorConf) UnmarshalFromIni(prefix string, name string, section
 	}
 	cfg.Sk = section["sk"]
 	cfg.ServerName = prefix + section["server_name"]
-	if cfg.BindAddr = section["bind_addr"]; cfg.BindAddr == "" {
-		cfg.BindAddr = "127.0.0.1"
-	}
 
-	if tmpStr, ok = section["bind_port"]; ok {
-		if cfg.BindPort, err = strconv.Atoi(tmpStr); err != nil {
-			return fmt.Errorf("Parse conf error: proxy [%s] bind_port incorrect", name)
+	cfg.Plugin = section["plugin"]
+	cfg.PluginParams = make(map[string]string)
+	if cfg.Plugin != "" {
+		// get params begin with "plugin_"
+		for k, v := range section {
+			if strings.HasPrefix(k, "plugin_") {
+				cfg.PluginParams[k] = v
+			}
 		}
 	} else {
-		return fmt.Errorf("Parse conf error: proxy [%s] bind_port not found", name)
+		if cfg.BindAddr = section["bind_addr"]; cfg.BindAddr == "" {
+			cfg.BindAddr = "127.0.0.1"
+		}
+		cfg.BindNetwork = strings.ToLower(section["bind_network"])
+		if cfg.BindNetwork != "unix" {
+			if tmpStr, ok = section["bind_port"]; ok {
+				if cfg.BindPort, err = strconv.Atoi(tmpStr); err != nil {
+					return fmt.Errorf("Parse conf error: proxy [%s] bind_port incorrect", name)
+				}
+			} else {
+				return fmt.Errorf("Parse conf error: proxy [%s] bind_port not found", name)
+			}
+		}
 	}
 	return nil
 }
@@ -171,6 +209,11 @@ func (cfg *SUDPVisitorConf) Compare(cmp VisitorConf) bool {
 
 func (cfg *SUDPVisitorConf) UnmarshalFromIni(prefix string, name string, section ini.Section) (err error) {
 	if err = cfg.BaseVisitorConf.UnmarshalFromIni(prefix, name, section); err != nil {
+		return
+	}
+	if cfg.BindNetwork != "" &&
+		cfg.BindNetwork != "udp" {
+		err = fmt.Errorf("Parse conf error: proxy [%s] incorrect bind_network [%s]", name, cfg.BindNetwork)
 		return
 	}
 	return
@@ -203,6 +246,12 @@ func (cfg *STCPVisitorConf) UnmarshalFromIni(prefix string, name string, section
 	if err = cfg.BaseVisitorConf.UnmarshalFromIni(prefix, name, section); err != nil {
 		return
 	}
+	if cfg.BindNetwork != "" &&
+		cfg.BindNetwork != "tcp" &&
+		cfg.BindNetwork != "unix" {
+		err = fmt.Errorf("Parse conf error: proxy [%s] incorrect bind_network [%s]", name, cfg.BindNetwork)
+		return
+	}
 	return
 }
 
@@ -231,6 +280,12 @@ func (cfg *XTCPVisitorConf) Compare(cmp VisitorConf) bool {
 
 func (cfg *XTCPVisitorConf) UnmarshalFromIni(prefix string, name string, section ini.Section) (err error) {
 	if err = cfg.BaseVisitorConf.UnmarshalFromIni(prefix, name, section); err != nil {
+		return
+	}
+	if cfg.BindNetwork != "" &&
+		cfg.BindNetwork != "tcp" &&
+		cfg.BindNetwork != "unix" {
+		err = fmt.Errorf("Parse conf error: proxy [%s] incorrect bind_network [%s]", name, cfg.BindNetwork)
 		return
 	}
 	return

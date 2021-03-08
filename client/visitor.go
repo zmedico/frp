@@ -21,6 +21,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -79,6 +80,22 @@ type BaseVisitor struct {
 	ctx context.Context
 }
 
+func (sv *BaseVisitor) Listen(network, bindAddr string, port int) (l net.Listener, err error) {
+	if network == "" {
+		network = "tcp"
+	}
+	var address string
+	if network == "unix" {
+		address = bindAddr
+		_ = os.Remove(bindAddr)
+	} else {
+		address = fmt.Sprintf("%s:%d", bindAddr, port)
+	}
+
+	l, err = net.Listen(network, address)
+	return
+}
+
 type STCPVisitor struct {
 	*BaseVisitor
 
@@ -86,7 +103,7 @@ type STCPVisitor struct {
 }
 
 func (sv *STCPVisitor) Run() (err error) {
-	sv.l, err = net.Listen("tcp", fmt.Sprintf("%s:%d", sv.cfg.BindAddr, sv.cfg.BindPort))
+	sv.l, err = sv.Listen(sv.cfg.BindNetwork, sv.cfg.BindAddr, sv.cfg.BindPort)
 	if err != nil {
 		return
 	}
@@ -175,7 +192,7 @@ type XTCPVisitor struct {
 }
 
 func (sv *XTCPVisitor) Run() (err error) {
-	sv.l, err = net.Listen("tcp", fmt.Sprintf("%s:%d", sv.cfg.BindAddr, sv.cfg.BindPort))
+	sv.l, err = sv.Listen(sv.cfg.BindNetwork, sv.cfg.BindAddr, sv.cfg.BindPort)
 	if err != nil {
 		return
 	}

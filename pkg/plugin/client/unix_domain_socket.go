@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 
 	frpIo "github.com/fatedier/golib/io"
 )
@@ -69,4 +70,11 @@ func (uds *UnixDomainSocketPlugin) Name() string {
 
 func (uds *UnixDomainSocketPlugin) Close() error {
 	return nil
+}
+
+func (uds *UnixDomainSocketPlugin) CreateListener() (l net.Listener, err error) {
+	// TODO: use nonblocking lock and fail if locked
+	_ = os.Remove(uds.UnixAddr.Name)
+	l, err = net.Listen(uds.UnixAddr.Net, uds.UnixAddr.Name)
+	return
 }
